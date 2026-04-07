@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clocker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="header-inner">
+        <img src="logo.png" alt="Logo" class="header-logo">
+        <div>
+          <p class="subtitle">Broadcast video clocking &amp; format export</p>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <div class="card">
+
+        <!-- Left: Upload -->
+        <div class="panel panel-upload">
+          <p class="panel-label">VIDEO FILE</p>
+          <div class="drop-zone" id="dropZone">
+            <input type="file" id="fileInput" accept="video/*" hidden>
+            <svg class="drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+            </svg>
+            <p class="drop-text">Drop video file here</p>
+            <p class="drop-sub">or <button class="link-btn" id="browseBtn">browse</button></p>
+          </div>
+          <div class="file-badge" id="fileBadge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+            </svg>
+            <span id="fileBadgeText"></span>
+            <button class="badge-clear" id="clearFile" title="Remove file">×</button>
+          </div>
+        </div>
+
+        <!-- Right: Settings -->
+        <div class="panel panel-settings">
+
+          <div class="form-section">
+            <p class="panel-label">CLOCK DETAILS</p>
+            <div class="fields">
+              <div class="field">
+                <label for="inp-name">Name</label>
+                <input type="text" id="inp-name" placeholder="e.g. Summer Campaign">
+              </div>
+              <div class="field">
+                <label for="inp-number">Number</label>
+                <input type="text" id="inp-number" placeholder="e.g. 001">
+              </div>
+              <div class="field">
+                <label for="inp-client">Client</label>
+                <input type="text" id="inp-client" placeholder="e.g. Acme Corp">
+              </div>
+              <div class="field">
+                <label for="inp-duration">Duration</label>
+                <input type="text" id="inp-duration" placeholder="e.g. 00:30">
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <p class="panel-label">EXPORT PRESET</p>
+            <div class="preset-group">
+              <label class="preset-option">
+                <input type="radio" name="preset" value="prores" checked>
+                <div class="preset-card">
+                  <div class="preset-name">Peach – ProRes 422 HQ</div>
+                  <div class="preset-detail">QuickTime .mov &nbsp;·&nbsp; Apple ProRes 422 HQ &nbsp;·&nbsp; PCM 16-bit &nbsp;·&nbsp; 48 kHz</div>
+                </div>
+              </label>
+              <label class="preset-option">
+                <input type="radio" name="preset" value="mxf">
+                <div class="preset-card">
+                  <div class="preset-name">ClearCast MXF OP1a</div>
+                  <div class="preset-detail">MXF .mxf &nbsp;·&nbsp; DNxHD 185 Mbps &nbsp;·&nbsp; PCM 24-bit &nbsp;·&nbsp; 48 kHz</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <button class="process-btn" id="processBtn" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            Process Video
+          </button>
+
+        </div>
+      </div>
+
+      <!-- Status / Result -->
+      <div class="status-card" id="statusCard">
+        <div class="status-dot" id="statusDot"></div>
+        <div class="status-body">
+          <p class="status-msg" id="statusMsg"></p>
+          <div class="progress-bar" id="progressBar">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+        </div>
+        <a class="download-btn" id="downloadBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+          Download
+        </a>
+      </div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

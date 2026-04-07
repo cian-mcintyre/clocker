@@ -1,0 +1,8 @@
+node_modules/
+uploads/
+output/
+tmp/
+public/vendor/
+*.mov
+*.mxf
+.DS_Store
