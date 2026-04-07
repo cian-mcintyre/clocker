@@ -24,13 +24,14 @@ Object.values(DIRS).forEach(d => fs.mkdirSync(d, { recursive: true }));
 // clock.mp4 lives in the project root alongside server.js
 const CLOCK_PATH = path.join(__dirname, 'clock.mp4');
 
-// Detect a usable font for FFmpeg drawtext
+// Detect a usable font for FFmpeg drawtext — bundled font is checked first
+// so it works on Railway (Linux) and locally (macOS) without any system fonts.
 const FONT_PATHS = [
-  '/System/Library/Fonts/Helvetica.ttc',
-  '/System/Library/Fonts/Supplemental/Arial.ttf',
-  '/Library/Fonts/Arial.ttf',
-  '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-  '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+  path.join(__dirname, 'fonts', 'font.ttf'),                          // bundled — always works
+  '/System/Library/Fonts/Helvetica.ttc',                              // macOS
+  '/System/Library/Fonts/Supplemental/Arial.ttf',                     // macOS
+  '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',                  // Debian/Ubuntu
+  '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',  // Debian/Ubuntu
 ];
 const FONT_FILE = FONT_PATHS.find(p => { try { return fs.existsSync(p); } catch { return false; } }) || null;
 
