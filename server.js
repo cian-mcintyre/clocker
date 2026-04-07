@@ -4,7 +4,7 @@ const express    = require('express');
 const multer     = require('multer');
 const path       = require('path');
 const fs         = require('fs');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const ffmpegPath  = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
 const { v4: uuidv4 } = require('uuid');
@@ -60,7 +60,7 @@ function probeVideo(filePath) {
 
 function runFFmpeg(args, onProgress) {
   return new Promise((resolve, reject) => {
-    const proc = execFile(ffmpegPath, args, { maxBuffer: 100 * 1024 * 1024 });
+    const proc = spawn(ffmpegPath, args);
     let stderr = '';
     proc.stderr.on('data', chunk => {
       const str = chunk.toString();
@@ -69,9 +69,9 @@ function runFFmpeg(args, onProgress) {
       if (m && onProgress) onProgress(m[1]);
     });
     proc.on('error', reject);
-    proc.on('close', code => {
+    proc.on('close', (code, signal) => {
       if (code === 0) resolve();
-      else reject(new Error(`FFmpeg failed (exit ${code}):\n${stderr.slice(-3000)}`));
+      else reject(new Error(`FFmpeg failed (exit ${code}, signal ${signal}):\n${stderr.slice(-4000)}`));
     });
   });
 }
@@ -183,7 +183,12 @@ async function processVideo(inputPath, details, preset, outputPath, jobId) {
       `${clockAudioRef}${mainAudioRef}concat=n=2:v=0:a=1[outa]`,
     ].join(';');
 
-    args.push('-filter_complex', filterComplex, '-map', '[outv]', '-map', '[outa]');
+    args.push(
+      '-filter_complex', filterComplex,
+      '-map', '[outv]', '-map', '[outa]',
+      '-threads', '2',          // cap threads to reduce peak memory usage
+      '-max_muxing_queue_size', '1024',
+    );
 
     if (preset === 'prores') {
       args.push('-c:v', 'prores_ks', '-profile:v', '3', '-pix_fmt', 'yuv422p10le',
