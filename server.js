@@ -8,6 +8,7 @@ const { execFile } = require('child_process');
 const ffmpegPath  = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
 const { v4: uuidv4 } = require('uuid');
+const sharp       = require('sharp');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -24,19 +25,7 @@ Object.values(DIRS).forEach(d => fs.mkdirSync(d, { recursive: true }));
 // clock.mp4 lives in the project root alongside server.js
 const CLOCK_PATH = path.join(__dirname, 'clock.mp4');
 
-// Detect a usable font for FFmpeg drawtext — bundled font is checked first
-// so it works on Railway (Linux) and locally (macOS) without any system fonts.
-const FONT_PATHS = [
-  path.join(__dirname, 'fonts', 'font.ttf'),                          // bundled — always works
-  '/System/Library/Fonts/Helvetica.ttc',                              // macOS
-  '/System/Library/Fonts/Supplemental/Arial.ttf',                     // macOS
-  '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',                  // Debian/Ubuntu
-  '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',  // Debian/Ubuntu
-];
-const FONT_FILE = FONT_PATHS.find(p => { try { return fs.existsSync(p); } catch { return false; } }) || null;
-
 console.log('FFmpeg:   ', ffmpegPath);
-console.log('Font:     ', FONT_FILE || '(FFmpeg default)');
 console.log('Clock:    ', fs.existsSync(CLOCK_PATH) ? CLOCK_PATH : 'NOT FOUND — add clock.mp4 to project root');
 
 // In-memory job store
@@ -152,47 +141,26 @@ async function processVideo(inputPath, details, preset, outputPath, jobId) {
     const mainHasAudio  = mainInfo.streams.some(s => s.codec_type === 'audio');
     const mainDuration  = parseFloat(mainInfo.format.duration) || 0;
 
-    // Write text fields to individual files — avoids all FFmpeg filter escaping issues
+    // Render text as a transparent 1920×1080 PNG using sharp + SVG.
+    // This works on any platform with no system fonts required.
     const { name, number, client, duration } = details;
-    const fields = [
-      { label: 'Name',     value: name     || '', file: path.join(tmpDir, 'f1.txt') },
-      { label: 'Number',   value: number   || '', file: path.join(tmpDir, 'f2.txt') },
-      { label: 'Client',   value: client   || '', file: path.join(tmpDir, 'f3.txt') },
-      { label: 'Duration', value: duration || '', file: path.join(tmpDir, 'f4.txt') },
-    ];
-    for (const f of fields) fs.writeFileSync(f.file, `${f.label}: ${f.value}`);
-
-    const TEXT_X    = 150;
-    const TEXT_Y0   = 780;
-    const LINE_H    = 50;
-    const FONT_SIZE = 36;
-
-    const fontArg  = FONT_FILE ? `fontfile='${FONT_FILE}'` : null;
-    const baseStyle = [
-      fontArg,
-      'fontcolor=white',
-      'shadowx=2:shadowy=2:shadowcolor=black@0.65',
-      `fontsize=${FONT_SIZE}`,
-      `x=${TEXT_X}`,
-      `enable='lt(t,7)'`,
-    ].filter(Boolean).join(':');
-
-    const drawFilters = fields
-      .map((f, i) => `drawtext=${baseStyle}:y=${TEXT_Y0 + i * LINE_H}:textfile='${f.file}'`)
-      .join(',');
+    const overlayPath = path.join(tmpDir, 'overlay.png');
+    await renderTextOverlay({ name, number, client, duration }, overlayPath);
 
     // Inputs:
     //   [0] clock.mp4
     //   [1] main video
-    //   [2] (optional) silent audio for clock if no audio track
-    //   [3] (optional) silent audio for main if no audio track
+    //   [2] overlay.png  (looped as a still image)
+    //   [3] (optional) silent audio for clock if no audio track
+    //   [4] (optional) silent audio for main if no audio track
     const args = ['-y'];
     args.push('-i', CLOCK_PATH);
     args.push('-i', inputPath);
+    args.push('-loop', '1', '-i', overlayPath);  // still PNG looped for duration of clock
 
     let clockAudioRef = '[0:a]';
     let mainAudioRef  = '[1:a]';
-    let nextIdx       = 2;
+    let nextIdx       = 3;
 
     if (!clockHasAudio) {
       args.push('-f', 'lavfi', '-t', '10', '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000');
@@ -209,8 +177,9 @@ async function processVideo(inputPath, details, preset, outputPath, jobId) {
 
     const filterComplex = [
       normalise,
-      `[0:v]${drawFilters}[clockv]`,
-      `[clockv][mainvn]concat=n=2:v=1:a=0[outv]`,
+      // Overlay the text PNG on clock.mp4 for the first 7 s only
+      "[0:v][2:v]overlay=enable='lt(t,7)'[clockv]",
+      '[clockv][mainvn]concat=n=2:v=1:a=0[outv]',
       `${clockAudioRef}${mainAudioRef}concat=n=2:v=0:a=1[outa]`,
     ].join(';');
 
@@ -231,6 +200,60 @@ async function processVideo(inputPath, details, preset, outputPath, jobId) {
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
   }
+}
+
+// ── Text overlay ─────────────────────────────────────────────────────────
+// Renders the 4 clock fields as white text on a transparent 1920×1080 PNG.
+// Uses sharp + SVG so no system fonts or FFmpeg drawtext filter are needed.
+
+async function renderTextOverlay(details, outputPath) {
+  const W = 1920, H = 1080;
+  const { name, number, client, duration } = details;
+
+  const lines = [
+    `Name: ${name || ''}`,
+    `Number: ${number || ''}`,
+    `Client: ${client || ''}`,
+    `Duration: ${duration || ''}`,
+  ];
+
+  const x      = 150;
+  const startY = 800;
+  const lineH  = 52;
+  const fontSize = 38;
+
+  // Build SVG text elements — one per line
+  const textEls = lines.map((line, i) => {
+    const y = startY + i * lineH;
+    // Escape XML special chars
+    const escaped = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return `
+      <text
+        x="${x}" y="${y}"
+        font-family="Arial, Helvetica, sans-serif"
+        font-size="${fontSize}"
+        font-weight="600"
+        fill="white"
+        filter="url(#shadow)"
+      >${escaped}</text>`;
+  }).join('\n');
+
+  const svg = `
+    <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+          <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="black" flood-opacity="0.75"/>
+        </filter>
+      </defs>
+      ${textEls}
+    </svg>`;
+
+  await sharp({
+    create: { width: W, height: H, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  })
+    .composite([{ input: Buffer.from(svg), blend: 'over' }])
+    .png()
+    .toFile(outputPath);
 }
 
 // ── Cleanup output files older than 2 hours ───────────────────────────────
